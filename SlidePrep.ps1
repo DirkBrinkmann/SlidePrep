@@ -1,11 +1,11 @@
-﻿#Requires -Version 5.1
+#Requires -Version 5.1
 
 <#
 .SYNOPSIS
     Automates common PowerPoint (PPTX) batch operations for workshop creators and presenters.
 
 .DESCRIPTION
-    MSFT-CSU-PPT-Automation processes all PPTX files in a folder, supporting eight operation
+    SlidePrep processes all PPTX files in a folder, supporting eight operation
     modes designed for two audiences:
 
     WORKSHOP CREATORS (content authors and v-Teams):
@@ -113,38 +113,38 @@
     A timestamped CSV log of all actions is saved in the source folder.
 
 .EXAMPLE
-    .\MSFT-CSU-PPT-Automation.ps1 -CleanPPTX -SourceFolder C:\Decks -DestinationFolder C:\Decks\Clean
+    .\SlidePrep.ps1 -CleanPPTX -SourceFolder C:\Decks -DestinationFolder C:\Decks\Clean
 
     Mode 1: Copies all PPTX files from C:\Decks to C:\Decks\Clean and strips notes,
     comments, and metadata.
 
 .EXAMPLE
-    .\MSFT-CSU-PPT-Automation.ps1 -CleanPPTX -RemoveHiddenSlidesFromCleanedPPT -SourceFolder C:\Decks -DestinationFolder C:\Decks\Clean
+    .\SlidePrep.ps1 -CleanPPTX -RemoveHiddenSlidesFromCleanedPPT -SourceFolder C:\Decks -DestinationFolder C:\Decks\Clean
 
     Mode 1 with hidden-slide removal: Same as above, but also deletes any hidden slides.
 
 .EXAMPLE
-    .\MSFT-CSU-PPT-Automation.ps1 -MarkFinal -SourceFolder C:\Decks
+    .\SlidePrep.ps1 -MarkFinal -SourceFolder C:\Decks
 
     Mode 2: Marks every PPTX in C:\Decks as "Final".
 
 .EXAMPLE
-    .\MSFT-CSU-PPT-Automation.ps1 -SetLanguage -SourceFolder C:\Decks
+    .\SlidePrep.ps1 -SetLanguage -SourceFolder C:\Decks
 
     Mode 3: Sets every text shape in every PPTX to English (US) proofing language.
 
 .EXAMPLE
-    .\MSFT-CSU-PPT-Automation.ps1 -SetLanguage -SourceFolder C:\Decks -MSOLanguageID msoLanguageIDGerman
+    .\SlidePrep.ps1 -SetLanguage -SourceFolder C:\Decks -MSOLanguageID msoLanguageIDGerman
 
     Mode 3: Sets proofing language to German instead of the default.
 
 .EXAMPLE
-    .\MSFT-CSU-PPT-Automation.ps1 -ConvertToPDF -SourceFolder C:\Decks -DestinationFolder C:\Decks\PDF
+    .\SlidePrep.ps1 -ConvertToPDF -SourceFolder C:\Decks -DestinationFolder C:\Decks\PDF
 
     Mode 4: Exports all PPTX files as PDF to C:\Decks\PDF.
 
 .EXAMPLE
-    .\MSFT-CSU-PPT-Automation.ps1 -DiscoverVariables -SourceFolder C:\Decks
+    .\SlidePrep.ps1 -DiscoverVariables -SourceFolder C:\Decks
 
     Mode 5: Scans all PPTX files and lists every unique <<Variable>> placeholder found.
     Example output:
@@ -155,28 +155,28 @@
 
 .EXAMPLE
     $vars = @{ '<<Presenter>>' = 'Jane Doe'; '<<Company>>' = 'Contoso Ltd.' }
-    .\MSFT-CSU-PPT-Automation.ps1 -SetVariables -SourceFolder C:\Decks -SlideVariables $vars
+    .\SlidePrep.ps1 -SetVariables -SourceFolder C:\Decks -SlideVariables $vars
 
     Mode 6: Replaces all occurrences of <<Presenter>> and <<Company>> across every slide.
 
 .EXAMPLE
-    .\MSFT-CSU-PPT-Automation.ps1 -SetVariables -SourceFolder C:\Decks -SlideVariables @{'<<Date>>'='2026-03-15'}
+    .\SlidePrep.ps1 -SetVariables -SourceFolder C:\Decks -SlideVariables @{'<<Date>>'='2026-03-15'}
 
     Mode 6: Inline hashtable variant — replaces <<Date>> in all decks.
 
 .EXAMPLE
-    .\MSFT-CSU-PPT-Automation.ps1 -AddLogo -SourceFolder C:\Decks
+    .\SlidePrep.ps1 -AddLogo -SourceFolder C:\Decks
 
     Mode 7: Prompts for a logo file and inserts it on each title slide. Review positioning
     manually afterwards.
 
 .EXAMPLE
-    .\MSFT-CSU-PPT-Automation.ps1 -RemoveFinal -SourceFolder C:\Decks
+    .\SlidePrep.ps1 -RemoveFinal -SourceFolder C:\Decks
 
     Mode 8: Removes the "Final" flag from all PPTX files so they can be edited.
 
 .NOTES
-    File Name : MSFT-CSU-PPT-Automation.ps1
+    File Name : SlidePrep.ps1
     Author    : Dirk Brinkmann (dirk.brinkmann@microsoft.com)
     Requires  : Windows with Microsoft PowerPoint installed, PowerShell 5.1+
 
@@ -1049,7 +1049,7 @@ function Find-PresentationVariables {
         # Build a ready-to-use hashtable hint
         $hint = '$vars = @{ ' + (($sorted | ForEach-Object { "'{0}' = ''" -f $_ }) -join '; ') + ' }'
         Write-Host ("  {0}" -f $hint) -ForegroundColor Gray
-        Write-Host ("  .\MSFT-CSU-PPT-Automation.ps1 -SetVariables -SourceFolder '{0}' -SlideVariables `$vars" -f $FolderPath) -ForegroundColor Gray
+        Write-Host ("  .\SlidePrep.ps1 -SetVariables -SourceFolder '{0}' -SlideVariables `$vars" -f $FolderPath) -ForegroundColor Gray
     }
 }
 
@@ -1184,7 +1184,7 @@ function Start-Main {
     Set-ConsoleWidth -Width $script:ConsoleWidth
 
     Write-Host $script:Delimiter -ForegroundColor Yellow
-    Write-Host ("MSFT-CSU PowerPoint Automation v{0}" -f $script:ScriptVersion) -ForegroundColor Yellow
+    Write-Host ("SlidePrep v{0}" -f $script:ScriptVersion) -ForegroundColor Yellow
     Write-Host $script:Delimiter -ForegroundColor Yellow
 
     Test-Environment
@@ -1291,7 +1291,7 @@ function Start-Main {
         }
 
         default {
-            Write-LogAndHost -Message 'No mode selected. Run Get-Help .\MSFT-CSU-PPT-Automation.ps1 -Full for usage instructions.' -Status Warning -ForegroundColor Magenta
+            Write-LogAndHost -Message 'No mode selected. Run Get-Help .\SlidePrep.ps1 -Full for usage instructions.' -Status Warning -ForegroundColor Magenta
         }
     }
 
