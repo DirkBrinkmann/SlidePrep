@@ -7,6 +7,10 @@ Batch-process PowerPoint (PPTX) files for workshop preparation and delivery. San
 - **Windows** with **Microsoft PowerPoint** installed
 - **PowerShell 5.1** or later
 
+## Before You Begin
+
+Download all workshop PPTX files to a local folder on your machine (e.g., `C:\Decks`). The script processes files in-place or copies them to a destination folder depending on the mode — it does not work with files on SharePoint, OneDrive, or network shares directly.
+
 ## Quick Start
 
 ```powershell
