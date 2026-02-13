@@ -2,6 +2,16 @@
 
 All notable changes to SlidePrep are documented in this file.
 
+## [1.20260213.2] — 2026-02-13
+
+### Changed
+- **Mode numbering:** Swapped Mode 4 and Mode 8 for a more logical workflow order. RemoveFinal is now Mode 4 (first step for presenters), ConvertToPDF is now Mode 8 (last step).
+
+## [1.20260213.1] — 2026-02-13
+
+### Added
+- **Mode 5 (DiscoverVariables):** New `-VariablePrefix` and `-VariableSuffix` parameters allow configurable placeholder delimiters (default: `<<` and `>>`). Use `-VariablePrefix '{{' -VariableSuffix '}}'` to scan for `{{Variable}}` patterns instead.
+
 ## [1.20260211.2] — 2026-02-11
 
 ### Added

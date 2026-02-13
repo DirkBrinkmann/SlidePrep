@@ -16,14 +16,14 @@
                                    and notes shape (default: English US) so spell-check works.
 
     WORKSHOP PRESENTERS (CSAs / delivery):
-      Mode 4 - ConvertToPDF      : Export every deck to PDF for customer handout.
+      Mode 4 - RemoveFinal       : Remove the "Final" flag so decks can be edited/customized.
       Mode 5 - DiscoverVariables : Scan all decks and list every unique <<Variable>> placeholder
                                    found. Run this BEFORE Mode 6 to know which variables to fill.
       Mode 6 - SetVariables      : Search-and-replace placeholder variables (e.g. <<Presenter>>)
                                    across all slides using a hashtable of key/value pairs.
       Mode 7 - AddLogo           : Insert a customer logo image onto every title slide.
                                    Position and scaling should be verified manually afterwards.
-      Mode 8 - RemoveFinal       : Remove the "Final" flag so decks can be edited/customized.
+      Mode 8 - ConvertToPDF      : Export every deck to PDF for customer handout.
 
     The script uses PowerPoint COM Automation and must run on a Windows machine with
     Microsoft PowerPoint installed. All COM objects are released in a finally block to
@@ -32,11 +32,11 @@
     TYPICAL WORKFLOWS
     -----------------
     Presenter preparing for a customer engagement:
-      1. Run Mode 8 (RemoveFinal)         - unlock the decks
+      1. Run Mode 4 (RemoveFinal)         - unlock the decks
       2. Run Mode 5 (DiscoverVariables)   - see which placeholders need values
       3. Run Mode 6 (SetVariables)        - fill in customer-specific values
       4. Run Mode 7 (AddLogo)             - brand the title slides
-      5. Run Mode 4 (ConvertToPDF)        - create handout PDFs
+      5. Run Mode 8 (ConvertToPDF)        - create handout PDFs
 
     Creator finalizing a new release:
       1. Run Mode 3 (SetLanguage)    - normalize proofing language
@@ -73,13 +73,25 @@
     Must be a valid member of [Microsoft.Office.Core.MsoLanguageID].
 
 .PARAMETER ConvertToPDF
-    Activates Mode 4. Exports every PPTX in SourceFolder to PDF in DestinationFolder.
+    Activates Mode 8. Exports every PPTX in SourceFolder to PDF in DestinationFolder.
     Requires -SourceFolder and -DestinationFolder.
+
+.PARAMETER RemoveFinal
+    Activates Mode 4. Removes the "Final" document property from every PPTX in
+    SourceFolder so the files can be edited.
 
 .PARAMETER DiscoverVariables
     Activates Mode 5. Scans all PPTX files in SourceFolder and outputs a sorted, distinct
     list of every placeholder variable found (text matching the pattern <<VariableName>>).
     Run this mode before Mode 6 (SetVariables) to identify which variables need values.
+
+.PARAMETER VariablePrefix
+    The opening delimiter used to identify placeholder variables in Mode 5.
+    Defaults to '<<'. Change this if your templates use a different prefix (e.g. '{{', '%%').
+
+.PARAMETER VariableSuffix
+    The closing delimiter used to identify placeholder variables in Mode 5.
+    Defaults to '>>'. Change this if your templates use a different suffix (e.g. '}}', '%%').
 
 .PARAMETER SetVariables
     Activates Mode 6. Performs search-and-replace of placeholder variables in all slides.
@@ -93,15 +105,11 @@
     Activates Mode 7. Prompts for a logo file (JPG/PNG) and inserts it on slide 1 of
     each deck. Size and position should be adjusted manually afterwards.
 
-.PARAMETER RemoveFinal
-    Activates Mode 8. Removes the "Final" document property from every PPTX in
-    SourceFolder so the files can be edited.
-
 .PARAMETER SourceFolder
     Path to the folder containing the PPTX files to process. Required for all modes.
 
 .PARAMETER DestinationFolder
-    Path to the output folder. Required for Mode 1 (CleanPPTX) and Mode 4 (ConvertToPDF).
+    Path to the output folder. Required for Mode 1 (CleanPPTX) and Mode 8 (ConvertToPDF).
 
 .INPUTS
     None. This script does not accept pipeline input.
@@ -139,9 +147,9 @@
     Mode 3: Sets proofing language to German instead of the default.
 
 .EXAMPLE
-    .\SlidePrep.ps1 -ConvertToPDF -SourceFolder C:\Decks -DestinationFolder C:\Decks\PDF
+    .\SlidePrep.ps1 -RemoveFinal -SourceFolder C:\Decks
 
-    Mode 4: Exports all PPTX files as PDF to C:\Decks\PDF.
+    Mode 4: Removes the "Final" flag from all PPTX files so they can be edited.
 
 .EXAMPLE
     .\SlidePrep.ps1 -DiscoverVariables -SourceFolder C:\Decks
@@ -152,6 +160,11 @@
         <<Company>>
         <<Date>>
         <<Presenter>>
+
+.EXAMPLE
+    .\SlidePrep.ps1 -DiscoverVariables -SourceFolder C:\Decks -VariablePrefix '{{' -VariableSuffix '}}'
+
+    Mode 5 with custom delimiters: Scans for {{Variable}} placeholders instead of <<Variable>>.
 
 .EXAMPLE
     $vars = @{ '<<Presenter>>' = 'Jane Doe'; '<<Company>>' = 'Contoso Ltd.' }
@@ -171,9 +184,9 @@
     manually afterwards.
 
 .EXAMPLE
-    .\SlidePrep.ps1 -RemoveFinal -SourceFolder C:\Decks
+    .\SlidePrep.ps1 -ConvertToPDF -SourceFolder C:\Decks -DestinationFolder C:\Decks\PDF
 
-    Mode 8: Removes the "Final" flag from all PPTX files so they can be edited.
+    Mode 8: Exports all PPTX files as PDF to C:\Decks\PDF.
 
 .NOTES
     File Name : SlidePrep.ps1
@@ -181,6 +194,10 @@
     Requires  : Windows with Microsoft PowerPoint installed, PowerShell 5.1+
 
     Version History:
+      1.20260213.2  2026-02-13  Swapped Mode 4/8: RemoveFinal is now Mode 4,
+                                 ConvertToPDF is now Mode 8 for logical workflow order.
+      1.20260213.1  2026-02-13  Mode 5: Added configurable -VariablePrefix and
+                                 -VariableSuffix parameters (default << and >>).
       1.20260211.2  2026-02-11  Added Mode 5 (DiscoverVariables) to scan decks for
                                 <<Variable>> placeholders. Renamed CCX -> MSFT-CSU.
       1.20260211.1  2026-02-11  Modernized: strict typing, improved COM cleanup, enhanced
@@ -227,13 +244,21 @@ param (
         HelpMessage = 'MSO language ID (e.g. msoLanguageIDEnglishUS, msoLanguageIDGerman).')]
     [string]$MSOLanguageID = 'msoLanguageIDEnglishUS',
 
-    [Parameter(Mandatory, ParameterSetName = 'Mode4ConvertToPDF',
-        HelpMessage = 'Convert all PPTX files to PDF.')]
-    [switch]$ConvertToPDF,
+    [Parameter(Mandatory, ParameterSetName = 'Mode4RemoveFinal',
+        HelpMessage = 'Remove the Final document property from all PPTX files.')]
+    [switch]$RemoveFinal,
 
     [Parameter(Mandatory, ParameterSetName = 'Mode5DiscoverVariables',
         HelpMessage = 'Scan all PPTX files and list every <<Variable>> placeholder found.')]
     [switch]$DiscoverVariables,
+
+    [Parameter(ParameterSetName = 'Mode5DiscoverVariables',
+        HelpMessage = 'Opening delimiter for placeholders. Defaults to <<.')]
+    [string]$VariablePrefix = '<<',
+
+    [Parameter(ParameterSetName = 'Mode5DiscoverVariables',
+        HelpMessage = 'Closing delimiter for placeholders. Defaults to >>.')]
+    [string]$VariableSuffix = '>>',
 
     [Parameter(Mandatory, ParameterSetName = 'Mode6SetVariables',
         HelpMessage = 'Replace placeholder variables in all slides.')]
@@ -247,26 +272,26 @@ param (
         HelpMessage = 'Insert a customer logo on every title slide.')]
     [switch]$AddLogo,
 
-    [Parameter(Mandatory, ParameterSetName = 'Mode8RemoveFinal',
-        HelpMessage = 'Remove the Final document property from all PPTX files.')]
-    [switch]$RemoveFinal,
+    [Parameter(Mandatory, ParameterSetName = 'Mode8ConvertToPDF',
+        HelpMessage = 'Convert all PPTX files to PDF.')]
+    [switch]$ConvertToPDF,
 
     # --- Shared path parameters ---
     [Parameter(Mandatory, ParameterSetName = 'Mode1CleanPPTX',
         HelpMessage = 'Folder containing the PPTX files to process.')]
     [Parameter(Mandatory, ParameterSetName = 'Mode2MarkFinal')]
     [Parameter(Mandatory, ParameterSetName = 'Mode3SetLanguage')]
-    [Parameter(Mandatory, ParameterSetName = 'Mode4ConvertToPDF')]
+    [Parameter(Mandatory, ParameterSetName = 'Mode4RemoveFinal')]
     [Parameter(Mandatory, ParameterSetName = 'Mode5DiscoverVariables')]
     [Parameter(Mandatory, ParameterSetName = 'Mode6SetVariables')]
     [Parameter(Mandatory, ParameterSetName = 'Mode7AddLogo')]
-    [Parameter(Mandatory, ParameterSetName = 'Mode8RemoveFinal')]
+    [Parameter(Mandatory, ParameterSetName = 'Mode8ConvertToPDF')]
     [ValidateScript({ Test-Path $_ -PathType Container })]
     [string]$SourceFolder,
 
     [Parameter(Mandatory, ParameterSetName = 'Mode1CleanPPTX',
         HelpMessage = 'Destination folder for cleaned or exported files.')]
-    [Parameter(Mandatory, ParameterSetName = 'Mode4ConvertToPDF')]
+    [Parameter(Mandatory, ParameterSetName = 'Mode8ConvertToPDF')]
     [string]$DestinationFolder
 )
 
@@ -276,7 +301,7 @@ param (
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
-[string]$script:ScriptVersion   = '1.20260211.2'
+[string]$script:ScriptVersion   = '1.20260213.2'
 [string]$script:ScriptName      = $MyInvocation.MyCommand.Name
 [datetime]$script:ScriptStart   = Get-Date
 [string]$script:LogFileName     = '{0}-{1:yyyy-MM-dd-HH-mm}.csv' -f
@@ -716,7 +741,7 @@ function Set-PresentationFinal {
 function Remove-PresentationFinal {
     <#
     .SYNOPSIS
-        Mode 8: Removes the "Final" document property from every PPTX in the folder.
+        Mode 4: Removes the "Final" document property from every PPTX in the folder.
     #>
     [CmdletBinding()]
     param (
@@ -855,7 +880,7 @@ function Set-PresentationLanguage {
 function Export-PresentationToPdf {
     <#
     .SYNOPSIS
-        Mode 4 worker: Exports a single presentation to PDF.
+        Mode 8 worker: Exports a single presentation to PDF.
     #>
     [CmdletBinding()]
     param (
@@ -904,7 +929,7 @@ function Export-PresentationToPdf {
 function Convert-PresentationsToPdf {
     <#
     .SYNOPSIS
-        Mode 4: Iterates all PPTX files and exports each to PDF with retry logic.
+        Mode 8: Iterates all PPTX files and exports each to PDF with retry logic.
     #>
     [CmdletBinding()]
     param (
@@ -968,14 +993,20 @@ function Find-PresentationVariables {
     [CmdletBinding()]
     param (
         [Parameter(Mandatory)]
-        [string]$FolderPath
+        [string]$FolderPath,
+
+        [string]$Prefix = '<<',
+
+        [string]$Suffix = '>>'
     )
 
-    Write-LogAndHost -Message ("Step [{0}] - Discovering <<Variables>> in PPTX files in: {1}" -f $script:StepCount, $FolderPath) -ForegroundColor Yellow
+    Write-LogAndHost -Message ("Step [{0}] - Discovering {1}Variables{2} in PPTX files in: {3}" -f $script:StepCount, $Prefix, $Suffix, $FolderPath) -ForegroundColor Yellow
     $script:StepCount++
 
-    # Regex pattern: match anything between << and >> (non-greedy)
-    $variablePattern = '<<.+?>>'
+    # Regex pattern: match anything between prefix and suffix (non-greedy)
+    $escapedPrefix   = [regex]::Escape($Prefix)
+    $escapedSuffix   = [regex]::Escape($Suffix)
+    $variablePattern = '{0}.+?{1}' -f $escapedPrefix, $escapedSuffix
 
     $allVariables  = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     $fileCount     = 0
@@ -1035,7 +1066,7 @@ function Find-PresentationVariables {
     # --- Output results ---
     Write-Host ''
     if ($allVariables.Count -eq 0) {
-        Write-LogAndHost -Message ("No <<Variables>> found in {0} PPTX file(s)." -f $fileCount) -ForegroundColor Yellow
+        Write-LogAndHost -Message ("No {0}Variables{1} found in {2} PPTX file(s)." -f $Prefix, $Suffix, $fileCount) -ForegroundColor Yellow
     }
     else {
         $sorted = $allVariables | Sort-Object
@@ -1228,23 +1259,21 @@ function Start-Main {
             }
         }
 
-        'Mode4ConvertToPDF' {
+        'Mode4RemoveFinal' {
             Write-Host $script:Delimiter -ForegroundColor Yellow
-            Write-LogAndHost -Message 'Mode: Convert PPTX to PDF' -ForegroundColor Yellow
+            Write-LogAndHost -Message 'Mode: Remove Final flag from all PPTX files' -ForegroundColor Yellow
 
-            if ((Test-FolderReady -Folder $SourceFolder -IsSource) -and
-                (Test-FolderReady -Folder $DestinationFolder)) {
-                Convert-PresentationsToPdf -SourcePath $SourceFolder -DestinationPath $DestinationFolder
-                $logPath = $DestinationFolder
+            if (Test-FolderReady -Folder $SourceFolder -IsSource) {
+                Remove-PresentationFinal -FolderPath $SourceFolder
             }
         }
 
         'Mode5DiscoverVariables' {
             Write-Host $script:Delimiter -ForegroundColor Yellow
-            Write-LogAndHost -Message 'Mode: Discover <<Variables>> in all PPTX files' -ForegroundColor Yellow
+            Write-LogAndHost -Message ("Mode: Discover {0}Variables{1} in all PPTX files" -f $VariablePrefix, $VariableSuffix) -ForegroundColor Yellow
 
             if (Test-FolderReady -Folder $SourceFolder -IsSource) {
-                Find-PresentationVariables -FolderPath $SourceFolder
+                Find-PresentationVariables -FolderPath $SourceFolder -Prefix $VariablePrefix -Suffix $VariableSuffix
             }
         }
 
@@ -1281,12 +1310,14 @@ function Start-Main {
             }
         }
 
-        'Mode8RemoveFinal' {
+        'Mode8ConvertToPDF' {
             Write-Host $script:Delimiter -ForegroundColor Yellow
-            Write-LogAndHost -Message 'Mode: Remove Final flag from all PPTX files' -ForegroundColor Yellow
+            Write-LogAndHost -Message 'Mode: Convert PPTX to PDF' -ForegroundColor Yellow
 
-            if (Test-FolderReady -Folder $SourceFolder -IsSource) {
-                Remove-PresentationFinal -FolderPath $SourceFolder
+            if ((Test-FolderReady -Folder $SourceFolder -IsSource) -and
+                (Test-FolderReady -Folder $DestinationFolder)) {
+                Convert-PresentationsToPdf -SourcePath $SourceFolder -DestinationPath $DestinationFolder
+                $logPath = $DestinationFolder
             }
         }
 

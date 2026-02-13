@@ -32,11 +32,11 @@ Download all workshop PPTX files to a local folder on your machine (e.g., `C:\De
 
 | Mode | Switch | Description |
 |------|--------|-------------|
-| 4 | `-ConvertToPDF` | Export every deck to PDF for customer handout. |
-| 5 | `-DiscoverVariables` | Scan all decks and list every unique `<<Variable>>` placeholder found. Run this before Mode 6. |
+| 4 | `-RemoveFinal` | Remove the "Final" flag so decks can be edited and customized. |
+| 5 | `-DiscoverVariables` | Scan all decks and list every unique `<<Variable>>` placeholder found. Supports `-VariablePrefix` / `-VariableSuffix` for custom delimiters. Run this before Mode 6. |
 | 6 | `-SetVariables` | Search-and-replace placeholder variables across all slides using a hashtable. |
 | 7 | `-AddLogo` | Insert a customer logo image (JPG/PNG) onto every title slide. |
-| 8 | `-RemoveFinal` | Remove the "Final" flag so decks can be edited and customized. |
+| 8 | `-ConvertToPDF` | Export every deck to PDF for customer handout. |
 
 ## Usage Examples
 
@@ -52,11 +52,11 @@ With hidden slide removal:
 .\SlidePrep.ps1 -CleanPPTX -RemoveHiddenSlidesFromCleanedPPT -SourceFolder C:\Decks -DestinationFolder C:\Decks\Clean
 ```
 
-### Mark / unmark as Final
+### Remove / restore Final flag
 
 ```powershell
-.\SlidePrep.ps1 -MarkFinal -SourceFolder C:\Decks
 .\SlidePrep.ps1 -RemoveFinal -SourceFolder C:\Decks
+.\SlidePrep.ps1 -MarkFinal -SourceFolder C:\Decks
 ```
 
 ### Set proofing language
@@ -78,8 +78,11 @@ With hidden slide removal:
 ### Discover and replace variables
 
 ```powershell
-# Step 1 — Find all placeholders
+# Step 1 — Find all placeholders (default << >> delimiters)
 .\SlidePrep.ps1 -DiscoverVariables -SourceFolder C:\Decks
+
+# Step 1 (alt) — Find placeholders with custom delimiters
+.\SlidePrep.ps1 -DiscoverVariables -SourceFolder C:\Decks -VariablePrefix '{{' -VariableSuffix '}}'
 
 # Step 2 — Replace them
 $vars = @{ '<<Presenter>>' = 'Jane Doe'; '<<Company>>' = 'Contoso Ltd.'; '<<Date>>' = '2026-03-15' }
