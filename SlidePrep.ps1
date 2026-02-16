@@ -194,6 +194,11 @@
     Requires  : Windows with Microsoft PowerPoint installed, PowerShell 5.1+
 
     Version History:
+      1.20260216.1  2026-02-16  Fixed Mode 6/7 hanging on certain PPTX files: added
+                                 DisplayAlerts suppression (ppAlertsNone), WithWindow=0,
+                                 and HasTextFrame guard before accessing shape text.
+                                 Added table-cell variable replacement in Mode 6/7.
+                                 Applied DisplayAlerts + WithWindow=0 to all other modes.
       1.20260213.2  2026-02-13  Swapped Mode 4/8: RemoveFinal is now Mode 4,
                                  ConvertToPDF is now Mode 8 for logical workflow order.
       1.20260213.1  2026-02-13  Mode 5: Added configurable -VariablePrefix and
@@ -301,7 +306,7 @@ param (
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
-[string]$script:ScriptVersion   = '1.20260213.2'
+[string]$script:ScriptVersion   = '1.20260216.1'
 [string]$script:ScriptName      = $MyInvocation.MyCommand.Name
 [datetime]$script:ScriptStart   = Get-Date
 [string]$script:LogFileName     = '{0}-{1:yyyy-MM-dd-HH-mm}.csv' -f
@@ -643,8 +648,10 @@ function Clear-Presentation {
         [bool]$RemoveHiddenSlides = $false
     )
 
-    $ppRDIAll = 99   # ppRemoveDocInfoType.ppRDIAll
-    $application = New-Object -ComObject PowerPoint.Application
+    $ppRDIAll      = 99   # ppRemoveDocInfoType.ppRDIAll
+    $ppAlertsNone = 1    # PpAlertLevel.ppAlertsNone — suppress modal dialogs
+    $application  = New-Object -ComObject PowerPoint.Application
+    $application.DisplayAlerts = $ppAlertsNone
 
     try {
         if ($RemoveHiddenSlides) {
@@ -652,7 +659,7 @@ function Clear-Presentation {
         }
 
         foreach ($file in Get-ChildItem -Path $Folder -Filter $script:PPTXFilter) {
-            $presentation = $application.Presentations.Open($file.FullName)
+            $presentation = $application.Presentations.Open($file.FullName, <# ReadOnly #> 0, <# Untitled #> 0, <# WithWindow #> 0)
             try {
                 # Remove final flag if present
                 if ($presentation.Final) {
@@ -712,11 +719,13 @@ function Set-PresentationFinal {
     Write-LogAndHost -Message ("Step [{0}] - Marking PPTX files as Final in: {1}" -f $script:StepCount, $FolderPath) -ForegroundColor Yellow
     $script:StepCount++
 
-    $application = New-Object -ComObject PowerPoint.Application
+    $ppAlertsNone = 1   # PpAlertLevel.ppAlertsNone — suppress modal dialogs
+    $application  = New-Object -ComObject PowerPoint.Application
+    $application.DisplayAlerts = $ppAlertsNone
     try {
         foreach ($file in Get-ChildItem -Path $FolderPath -Filter $script:PPTXFilter) {
             Write-LogAndHost -Message ("Processing: {0}" -f $file.Name) -ForegroundColor Green
-            $presentation = $application.Presentations.Open($file.FullName)
+            $presentation = $application.Presentations.Open($file.FullName, <# ReadOnly #> 0, <# Untitled #> 0, <# WithWindow #> 0)
             try {
                 if ($presentation.Final) {
                     Write-LogAndHost -Message ("`t-> Already marked as Final.") -ForegroundColor Green
@@ -752,11 +761,13 @@ function Remove-PresentationFinal {
     Write-LogAndHost -Message ("Step [{0}] - Removing Final flag from PPTX files in: {1}" -f $script:StepCount, $FolderPath) -ForegroundColor Yellow
     $script:StepCount++
 
-    $application = New-Object -ComObject PowerPoint.Application
+    $ppAlertsNone = 1   # PpAlertLevel.ppAlertsNone — suppress modal dialogs
+    $application  = New-Object -ComObject PowerPoint.Application
+    $application.DisplayAlerts = $ppAlertsNone
     try {
         foreach ($file in Get-ChildItem -Path $FolderPath -Filter $script:PPTXFilter) {
             Write-LogAndHost -Message ("Processing: {0}" -f $file.Name) -ForegroundColor Green
-            $presentation = $application.Presentations.Open($file.FullName)
+            $presentation = $application.Presentations.Open($file.FullName, <# ReadOnly #> 0, <# Untitled #> 0, <# WithWindow #> 0)
             try {
                 if ($presentation.Final) {
                     $presentation.Final = $false
@@ -809,11 +820,13 @@ function Set-PresentationLanguage {
         return
     }
 
-    $application = New-Object -ComObject PowerPoint.Application
+    $ppAlertsNone = 1   # PpAlertLevel.ppAlertsNone — suppress modal dialogs
+    $application  = New-Object -ComObject PowerPoint.Application
+    $application.DisplayAlerts = $ppAlertsNone
     try {
         foreach ($file in Get-ChildItem -Path $FolderPath -Filter $script:PPTXFilter) {
             Write-LogAndHost -Message ("Processing: {0}" -f $file.Name) -ForegroundColor Green
-            $presentation = $application.Presentations.Open($file.FullName)
+            $presentation = $application.Presentations.Open($file.FullName, <# ReadOnly #> 0, <# Untitled #> 0, <# WithWindow #> 0)
             try {
                 if ($presentation.Final) {
                     Write-LogAndHost -Message "`t-> Skipped (marked as Final). Remove the Final flag first." -Status Warning -ForegroundColor Yellow
@@ -948,14 +961,16 @@ function Convert-PresentationsToPdf {
         New-Item -Path $DestinationPath -ItemType Directory | Out-Null
     }
 
-    $application = New-Object -ComObject PowerPoint.Application
+    $ppAlertsNone = 1   # PpAlertLevel.ppAlertsNone — suppress modal dialogs
+    $application  = New-Object -ComObject PowerPoint.Application
+    $application.DisplayAlerts = $ppAlertsNone
     try {
         foreach ($file in Get-ChildItem -Path $SourcePath -Filter $script:PPTXFilter) {
             Write-LogAndHost -Message ("`t-> Processing: {0}" -f $file.Name) -ForegroundColor Green
             $maxRetries = 3
             for ($attempt = 1; $attempt -le $maxRetries; $attempt++) {
                 try {
-                    $presentation = $application.Presentations.Open($file.FullName)
+                    $presentation = $application.Presentations.Open($file.FullName, <# ReadOnly #> 0, <# Untitled #> 0, <# WithWindow #> 0)
                     try {
                         Export-PresentationToPdf -Presentation $presentation -PptxFileName $file.FullName -OutputFolder $DestinationPath
                     }
@@ -1011,7 +1026,9 @@ function Find-PresentationVariables {
     $allVariables  = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     $fileCount     = 0
 
-    $application = New-Object -ComObject PowerPoint.Application
+    $ppAlertsNone = 1   # PpAlertLevel.ppAlertsNone — suppress modal dialogs
+    $application  = New-Object -ComObject PowerPoint.Application
+    $application.DisplayAlerts = $ppAlertsNone
     try {
         foreach ($file in Get-ChildItem -Path $FolderPath -Filter $script:PPTXFilter) {
             $fileCount++
@@ -1105,9 +1122,11 @@ function Set-PresentationVariablesAndLogo {
         [string]$CustomerLogoPath
     )
 
-    $application = New-Object -ComObject PowerPoint.Application
+    $ppAlertsNone = 1   # PpAlertLevel.ppAlertsNone — suppress modal dialogs
+    $application  = New-Object -ComObject PowerPoint.Application
+    $application.DisplayAlerts = $ppAlertsNone
     try {
-        $presentation = $application.Presentations.Open($PptxPath)
+        $presentation = $application.Presentations.Open($PptxPath, <# ReadOnly #> 0, <# Untitled #> 0, <# WithWindow #> 0)
         try {
             $replaceCounter     = 0
             $needsSave          = $false
@@ -1124,17 +1143,42 @@ function Set-PresentationVariablesAndLogo {
                 # --- Variable replacement in shapes ---
                 if ($CustomerVariables -and $slide.Shapes.Count -gt 0) {
                     foreach ($shape in $slide.Shapes) {
-                        foreach ($key in $CustomerVariables.Keys) {
-                            try {
-                                if ($shape.TextFrame.TextRange.Text -match [regex]::Escape($key)) {
-                                    $shape.TextFrame.TextRange.Text = $shape.TextFrame.TextRange.Text -replace
-                                        [regex]::Escape($key), $CustomerVariables[$key]
-                                    $needsSave = $true
-                                    $replaceCounter++
+                        # Regular text frames
+                        if ($shape.HasTextFrame -eq -1) {
+                            foreach ($key in $CustomerVariables.Keys) {
+                                try {
+                                    if ($shape.TextFrame.TextRange.Text -match [regex]::Escape($key)) {
+                                        $shape.TextFrame.TextRange.Text = $shape.TextFrame.TextRange.Text -replace
+                                            [regex]::Escape($key), $CustomerVariables[$key]
+                                        $needsSave = $true
+                                        $replaceCounter++
+                                    }
+                                }
+                                catch { <# Unexpected text-frame error — skip #> }
+                            }
+                        }
+
+                        # Table cells
+                        try {
+                            if ($shape.HasTable) {
+                                for ($r = 1; $r -le $shape.Table.Rows.Count; $r++) {
+                                    foreach ($cell in $shape.Table.Rows($r).Cells) {
+                                        foreach ($key in $CustomerVariables.Keys) {
+                                            try {
+                                                if ($cell.Shape.TextFrame.TextRange.Text -match [regex]::Escape($key)) {
+                                                    $cell.Shape.TextFrame.TextRange.Text = $cell.Shape.TextFrame.TextRange.Text -replace
+                                                        [regex]::Escape($key), $CustomerVariables[$key]
+                                                    $needsSave = $true
+                                                    $replaceCounter++
+                                                }
+                                            }
+                                            catch { <# Cell without text — skip #> }
+                                        }
+                                    }
                                 }
                             }
-                            catch { <# Shape without text frame #> }
                         }
+                        catch { <# No table — skip #> }
                     }
                 }
 

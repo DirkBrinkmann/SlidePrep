@@ -2,6 +2,17 @@
 
 All notable changes to SlidePrep are documented in this file.
 
+## [1.20260216.1] — 2026-02-16
+
+### Fixed
+- **Mode 6/7 (SetVariables / AddLogo):** Fixed hang when processing certain PPTX files. Root causes: missing `DisplayAlerts` suppression allowed PowerPoint to show blocking modal dialogs; default `WithWindow = True` created visible windows that could stall on UI prompts; accessing `TextFrame` on OLE/embedded shapes without a `HasTextFrame` guard could trigger a blocking OLE server call.
+
+### Added
+- **Mode 6/7:** Variable replacement now also covers table cells, matching the discovery scope of Mode 5 (DiscoverVariables).
+
+### Changed
+- All modes now set `DisplayAlerts = ppAlertsNone` and open presentations with `WithWindow = 0` to prevent COM automation hangs across the board.
+
 ## [1.20260213.2] — 2026-02-13
 
 ### Changed
