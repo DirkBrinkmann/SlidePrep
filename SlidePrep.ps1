@@ -194,6 +194,11 @@
     Requires  : Windows with Microsoft PowerPoint installed, PowerShell 5.1+
 
     Version History:
+      1.20260401.1  2026-04-01  Mode 8: After PDF export, sets the Purview Information
+                                 Protection label "Public" on each PDF using Set-FileLabel
+                                 from PurviewInformationProtection (>= 3.2.57.0). On ARM64,
+                                 delegates to x86 PowerShell. Skips gracefully if the module
+                                 is not installed.
       1.20260216.1  2026-02-16  Fixed Mode 6/7 hanging on certain PPTX files: added
                                  DisplayAlerts suppression (ppAlertsNone), WithWindow=0,
                                  and HasTextFrame guard before accessing shape text.
@@ -306,7 +311,7 @@ param (
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
-[string]$script:ScriptVersion   = '1.20260216.1'
+[string]$script:ScriptVersion   = '1.20260401.1'
 [string]$script:ScriptName      = $MyInvocation.MyCommand.Name
 [datetime]$script:ScriptStart   = Get-Date
 [string]$script:LogFileName     = '{0}-{1:yyyy-MM-dd-HH-mm}.csv' -f
@@ -628,6 +633,120 @@ function Test-Environment {
     }
     else {
         Write-LogAndHost -Message "`t-> No running PowerPoint instances found." -ForegroundColor Green
+    }
+}
+
+# ============================================================================
+# PURVIEW INFORMATION PROTECTION
+# ============================================================================
+
+function Test-PurviewAvailability {
+    <#
+    .SYNOPSIS
+        Checks whether the PurviewInformationProtection module is installed
+        with the minimum required version (3.2.57.0).
+    .OUTPUTS
+        [bool] $true when the module is available; $false otherwise.
+    #>
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param ()
+
+    $minimumVersion = [version]'3.2.57.0'
+    $moduleName     = 'PurviewInformationProtection'
+
+    $module = Get-Module -ListAvailable -Name $moduleName |
+        Where-Object { $_.Version -ge $minimumVersion } |
+        Sort-Object Version -Descending |
+        Select-Object -First 1
+
+    if ($module) {
+        Write-LogAndHost -Message ("`t-> {0} v{1} found." -f $moduleName, $module.Version) -ForegroundColor Green
+        return $true
+    }
+
+    Write-LogAndHost -Message ((
+        "`t-> {0} >= {1} is not installed. PDF Purview labeling will be skipped.`n" +
+        "`t   Install the latest Microsoft Purview Information Protection client from:`n" +
+        "`t   https://www.microsoft.com/en-us/download/details.aspx?id=53018"
+    ) -f $moduleName, $minimumVersion) -Status Warning -ForegroundColor Magenta
+    return $false
+}
+
+function Set-PdfPurviewLabel {
+    <#
+    .SYNOPSIS
+        Sets the Purview Information Protection label "Public" on every PDF in
+        the specified folder.
+    .DESCRIPTION
+        Uses Set-FileLabel from the PurviewInformationProtection module. On ARM64
+        systems the module is not supported natively, so the cmdlet is executed
+        via the x86 PowerShell host (SysWOW64).
+    #>
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory)]
+        [string]$DestinationPath
+    )
+
+    $labelId       = '87867195-f2b8-4ac2-b0b6-6bb73cb33afc'
+    $justification = 'Customer Workshop delivery'
+    $pdfFiles      = @(Get-ChildItem -Path $DestinationPath -Filter '*.pdf' -File)
+
+    if ($pdfFiles.Count -eq 0) {
+        Write-LogAndHost -Message "`t-> No PDF files found for Purview labeling." -Status Warning -ForegroundColor Magenta
+        return
+    }
+
+    Write-LogAndHost -Message ("Step [{0}] - Setting Purview label 'Public' on {1} PDF(s)" -f $script:StepCount, $pdfFiles.Count) -ForegroundColor Yellow
+    $script:StepCount++
+
+    $isArm64 = $env:PROCESSOR_ARCHITECTURE -eq 'ARM64'
+
+    if ($isArm64) {
+        # ARM64: delegate to x86 PowerShell
+        $x86Ps = 'C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe'
+        if (-not (Test-Path -LiteralPath $x86Ps)) {
+            Write-LogAndHost -Message "`t-> x86 PowerShell not found at $x86Ps. Purview labeling skipped." -Status Warning -ForegroundColor Magenta
+            return
+        }
+        Write-LogAndHost -Message "`t-> ARM64 detected - delegating to x86 PowerShell." -ForegroundColor Yellow
+
+        foreach ($pdf in $pdfFiles) {
+            try {
+                $escapedPath = $pdf.FullName -replace "'", "''"
+                $scriptBlock = "Import-Module PurviewInformationProtection -MinimumVersion 3.2.57.0 -ErrorAction Stop; " +
+                    "Set-FileLabel -Path '$escapedPath' -LabelId '$labelId' -JustificationMessage '$justification' -ErrorAction Stop"
+                $result = & $x86Ps -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command $scriptBlock 2>&1
+                if ($LASTEXITCODE -ne 0) {
+                    throw ($result -join "`n")
+                }
+                Write-LogAndHost -Message ("`t-> Labeled: {0}" -f $pdf.Name) -ForegroundColor Green
+            }
+            catch {
+                Write-LogAndHost -Message ("`t-> Failed to label {0}: {1}" -f $pdf.Name, $_.Exception.Message) -Status Error -ForegroundColor Red
+            }
+        }
+    }
+    else {
+        # Native x64 / x86 - import and call directly
+        try {
+            Import-Module PurviewInformationProtection -MinimumVersion 3.2.57.0 -ErrorAction Stop
+        }
+        catch {
+            Write-LogAndHost -Message ("`t-> Failed to import PurviewInformationProtection: {0}" -f $_.Exception.Message) -Status Error -ForegroundColor Red
+            return
+        }
+
+        foreach ($pdf in $pdfFiles) {
+            try {
+                Set-FileLabel -Path $pdf.FullName -LabelId $labelId -JustificationMessage $justification -ErrorAction Stop
+                Write-LogAndHost -Message ("`t-> Labeled: {0}" -f $pdf.Name) -ForegroundColor Green
+            }
+            catch {
+                Write-LogAndHost -Message ("`t-> Failed to label {0}: {1}" -f $pdf.Name, $_.Exception.Message) -Status Error -ForegroundColor Red
+            }
+        }
     }
 }
 
@@ -1361,6 +1480,12 @@ function Start-Main {
             if ((Test-FolderReady -Folder $SourceFolder -IsSource) -and
                 (Test-FolderReady -Folder $DestinationFolder)) {
                 Convert-PresentationsToPdf -SourcePath $SourceFolder -DestinationPath $DestinationFolder
+
+                # Set Purview "Public" label on exported PDFs (best-effort)
+                if (Test-PurviewAvailability) {
+                    Set-PdfPurviewLabel -DestinationPath $DestinationFolder
+                }
+
                 $logPath = $DestinationFolder
             }
         }

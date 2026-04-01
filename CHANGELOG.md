@@ -2,6 +2,13 @@
 
 All notable changes to SlidePrep are documented in this file.
 
+## [1.20260401.1] — 2026-04-01
+
+### Added
+- **Mode 8 (ConvertToPDF):** After exporting PDFs, the script now sets the Microsoft Purview Information Protection label **"Public"** (`87867195-f2b8-4ac2-b0b6-6bb73cb33afc`) on every exported PDF using `Set-FileLabel` with justification "Customer Workshop delivery".
+- Requires the `PurviewInformationProtection` PowerShell module (≥ 3.2.57.0). If the module is not installed, labeling is skipped and the user is directed to the [Microsoft Purview Information Protection client download page](https://www.microsoft.com/en-us/download/details.aspx?id=53018).
+- On **ARM64** systems (where the Purview module is unsupported), the labeling step automatically delegates to the x86 PowerShell host (`C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe`).
+
 ## [1.20260216.1] — 2026-02-16
 
 ### Fixed
