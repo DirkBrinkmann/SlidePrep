@@ -78,6 +78,14 @@ With hidden slide removal:
 
 After exporting, the script automatically sets the Microsoft Purview Information Protection label **"Public"** on every PDF. If the Purview module is not installed the labeling step is skipped and PDFs are still exported normally. See [Purview Information Protection Labeling](#purview-information-protection-labeling) for details.
 
+To use a different label:
+
+```powershell
+.\SlidePrep.ps1 -ConvertToPDF -SourceFolder C:\Decks -DestinationFolder C:\Decks\PDF `
+    -PurviewLabelId '<your-label-guid>' -PurviewLabelName 'Confidential' `
+    -PurviewJustification 'Internal review'
+```
+
 ### Discover and replace variables
 
 ```powershell

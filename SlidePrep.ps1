@@ -76,6 +76,18 @@
     Activates Mode 8. Exports every PPTX in SourceFolder to PDF in DestinationFolder.
     Requires -SourceFolder and -DestinationFolder.
 
+.PARAMETER PurviewLabelId
+    The GUID of the Purview Information Protection label to apply to exported PDFs.
+    Defaults to '87867195-f2b8-4ac2-b0b6-6bb73cb33afc' (Public).
+
+.PARAMETER PurviewLabelName
+    Display name of the Purview label (used in log messages only).
+    Defaults to 'Public'.
+
+.PARAMETER PurviewJustification
+    Justification message passed to Set-FileLabel when changing the label.
+    Defaults to 'Customer Workshop delivery'.
+
 .PARAMETER RemoveFinal
     Activates Mode 4. Removes the "Final" document property from every PPTX in
     SourceFolder so the files can be edited.
@@ -194,6 +206,9 @@
     Requires  : Windows with Microsoft PowerPoint installed, PowerShell 5.1+
 
     Version History:
+      1.20260401.2  2026-04-01  Mode 8: Purview label ID, display name, and justification
+                                 are now configurable via -PurviewLabelId, -PurviewLabelName,
+                                 and -PurviewJustification parameters (defaults unchanged).
       1.20260401.1  2026-04-01  Mode 8: After PDF export, sets the Purview Information
                                  Protection label "Public" on each PDF using Set-FileLabel
                                  from PurviewInformationProtection (>= 3.2.57.0). On ARM64,
@@ -286,6 +301,18 @@ param (
         HelpMessage = 'Convert all PPTX files to PDF.')]
     [switch]$ConvertToPDF,
 
+    [Parameter(ParameterSetName = 'Mode8ConvertToPDF',
+        HelpMessage = 'Purview Information Protection label ID to apply to exported PDFs.')]
+    [string]$PurviewLabelId = '87867195-f2b8-4ac2-b0b6-6bb73cb33afc',
+
+    [Parameter(ParameterSetName = 'Mode8ConvertToPDF',
+        HelpMessage = 'Purview Information Protection label name (for display only).')]
+    [string]$PurviewLabelName = 'Public',
+
+    [Parameter(ParameterSetName = 'Mode8ConvertToPDF',
+        HelpMessage = 'Justification message for the Purview label change.')]
+    [string]$PurviewJustification = 'Customer Workshop delivery',
+
     # --- Shared path parameters ---
     [Parameter(Mandatory, ParameterSetName = 'Mode1CleanPPTX',
         HelpMessage = 'Folder containing the PPTX files to process.')]
@@ -311,7 +338,7 @@ param (
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
-[string]$script:ScriptVersion   = '1.20260401.1'
+[string]$script:ScriptVersion   = '1.20260401.2'
 [string]$script:ScriptName      = $MyInvocation.MyCommand.Name
 [datetime]$script:ScriptStart   = Get-Date
 [string]$script:LogFileName     = '{0}-{1:yyyy-MM-dd-HH-mm}.csv' -f
@@ -686,19 +713,24 @@ function Set-PdfPurviewLabel {
     [CmdletBinding()]
     param (
         [Parameter(Mandatory)]
-        [string]$DestinationPath
+        [string]$DestinationPath,
+
+        [Parameter(Mandatory)]
+        [string]$LabelId,
+
+        [string]$LabelName = 'Public',
+
+        [string]$JustificationMessage = 'Customer Workshop delivery'
     )
 
-    $labelId       = '87867195-f2b8-4ac2-b0b6-6bb73cb33afc'
-    $justification = 'Customer Workshop delivery'
-    $pdfFiles      = @(Get-ChildItem -Path $DestinationPath -Filter '*.pdf' -File)
+    $pdfFiles = @(Get-ChildItem -Path $DestinationPath -Filter '*.pdf' -File)
 
     if ($pdfFiles.Count -eq 0) {
         Write-LogAndHost -Message "`t-> No PDF files found for Purview labeling." -Status Warning -ForegroundColor Magenta
         return
     }
 
-    Write-LogAndHost -Message ("Step [{0}] - Setting Purview label 'Public' on {1} PDF(s)" -f $script:StepCount, $pdfFiles.Count) -ForegroundColor Yellow
+    Write-LogAndHost -Message ("Step [{0}] - Setting Purview label '{1}' on {2} PDF(s)" -f $script:StepCount, $LabelName, $pdfFiles.Count) -ForegroundColor Yellow
     $script:StepCount++
 
     $isArm64 = $env:PROCESSOR_ARCHITECTURE -eq 'ARM64'
@@ -716,7 +748,7 @@ function Set-PdfPurviewLabel {
             try {
                 $escapedPath = $pdf.FullName -replace "'", "''"
                 $scriptBlock = "Import-Module PurviewInformationProtection -MinimumVersion 3.2.57.0 -ErrorAction Stop; " +
-                    "Set-FileLabel -Path '$escapedPath' -LabelId '$labelId' -JustificationMessage '$justification' -ErrorAction Stop"
+                    "Set-FileLabel -Path '$escapedPath' -LabelId '$LabelId' -JustificationMessage '$JustificationMessage' -ErrorAction Stop"
                 $result = & $x86Ps -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command $scriptBlock 2>&1
                 if ($LASTEXITCODE -ne 0) {
                     throw ($result -join "`n")
@@ -740,7 +772,7 @@ function Set-PdfPurviewLabel {
 
         foreach ($pdf in $pdfFiles) {
             try {
-                Set-FileLabel -Path $pdf.FullName -LabelId $labelId -JustificationMessage $justification -ErrorAction Stop
+                Set-FileLabel -Path $pdf.FullName -LabelId $LabelId -JustificationMessage $JustificationMessage -ErrorAction Stop
                 Write-LogAndHost -Message ("`t-> Labeled: {0}" -f $pdf.Name) -ForegroundColor Green
             }
             catch {
@@ -1481,9 +1513,11 @@ function Start-Main {
                 (Test-FolderReady -Folder $DestinationFolder)) {
                 Convert-PresentationsToPdf -SourcePath $SourceFolder -DestinationPath $DestinationFolder
 
-                # Set Purview "Public" label on exported PDFs (best-effort)
+                # Set Purview label on exported PDFs (best-effort)
                 if (Test-PurviewAvailability) {
-                    Set-PdfPurviewLabel -DestinationPath $DestinationFolder
+                    Set-PdfPurviewLabel -DestinationPath $DestinationFolder `
+                        -LabelId $PurviewLabelId -LabelName $PurviewLabelName `
+                        -JustificationMessage $PurviewJustification
                 }
 
                 $logPath = $DestinationFolder

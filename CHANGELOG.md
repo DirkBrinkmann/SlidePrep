@@ -2,6 +2,11 @@
 
 All notable changes to SlidePrep are documented in this file.
 
+## [1.20260401.2] — 2026-04-01
+
+### Changed
+- **Mode 8 (ConvertToPDF):** The Purview label ID, display name, and justification message are now configurable via `-PurviewLabelId`, `-PurviewLabelName`, and `-PurviewJustification` parameters. Defaults remain unchanged (label "Public", justification "Customer Workshop delivery").
+
 ## [1.20260401.1] — 2026-04-01
 
 ### Added
