@@ -6,6 +6,7 @@ All notable changes to SlidePrep are documented in this file.
 
 ### Changed
 - **Mode 8 (ConvertToPDF):** The Purview label ID, display name, and justification message are now configurable via `-PurviewLabelId`, `-PurviewLabelName`, and `-PurviewJustification` parameters. Defaults remain unchanged (label "Public", justification "Customer Workshop delivery").
+- **Mode 8 (ConvertToPDF):** On ARM64 systems, a warning is now displayed that Purview labeling may be significantly slower due to x86 emulation.
 
 ## [1.20260401.1] — 2026-04-01
 

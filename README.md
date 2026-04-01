@@ -140,7 +140,7 @@ When running **Mode 8 (ConvertToPDF)**, the script automatically sets the Micros
 |----------|-------------|
 | Module installed | Each PDF is labeled **Public** after export. |
 | Module not installed | A warning is displayed with the download link. PDF export still succeeds; only labeling is skipped. |
-| ARM64 architecture | The labeling step is automatically delegated to the x86 PowerShell host (`C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe`) because the Purview module does not support ARM64 natively. |
+| ARM64 architecture | The labeling step is automatically delegated to the x86 PowerShell host (`C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe`) because the Purview module does not support ARM64 natively. **Note:** Labeling on ARM64 may be significantly slower due to x86 emulation. |
 
 ## Logging
 
