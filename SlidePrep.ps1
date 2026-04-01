@@ -743,6 +743,7 @@ function Set-PdfPurviewLabel {
             return
         }
         Write-LogAndHost -Message "`t-> ARM64 detected - delegating to x86 PowerShell." -ForegroundColor Yellow
+        Write-LogAndHost -Message "`t-> WARNING: Labeling on ARM64 may be significantly slower due to x86 emulation." -Status Warning -ForegroundColor Magenta
 
         foreach ($pdf in $pdfFiles) {
             try {
