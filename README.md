@@ -6,7 +6,7 @@ Batch-process PowerPoint (PPTX) files for workshop preparation and delivery. San
 
 - **Windows** with **Microsoft PowerPoint** installed
 - **PowerShell 5.1** or later
-- *(Optional)* **[Microsoft Purview Information Protection client](https://www.microsoft.com/en-us/download/details.aspx?id=53018)** — required for automatic PDF labeling in Mode 8
+- *(Optional)* **[Microsoft Purview Information Protection client](https://www.microsoft.com/en-us/download/details.aspx?id=53018)** — required for automatic PDF labeling in Mode 8 and Mode 9
 
 ## Before You Begin
 
@@ -38,6 +38,7 @@ Download all workshop PPTX files to a local folder on your machine (e.g., `C:\De
 | 6 | `-SetVariables` | Search-and-replace placeholder variables across all slides using a hashtable. |
 | 7 | `-AddLogo` | Insert a customer logo image (JPG/PNG) onto every title slide. |
 | 8 | `-ConvertToPDF` | Export every deck to PDF for customer handout. Automatically sets the Purview Information Protection label to **Public** on each PDF (requires the Purview client; see [below](#purview-information-protection-labeling)). |
+| 9 | `-SetPurviewLabel` | Apply a Purview sensitivity label to all PDFs in a folder without converting from PPTX. Useful for re-labeling or labeling PDFs produced elsewhere. |
 
 ## Usage Examples
 
@@ -86,6 +87,18 @@ To use a different label:
     -PurviewJustification 'Internal review'
 ```
 
+### Label existing PDFs (without conversion)
+
+```powershell
+# Label all PDFs in a folder with the default "Public" label
+.\SlidePrep.ps1 -SetPurviewLabel -SourceFolder C:\Decks\PDF
+
+# Use a different label
+.\SlidePrep.ps1 -SetPurviewLabel -SourceFolder C:\Decks\PDF `
+    -PurviewLabelId '<your-label-guid>' -PurviewLabelName 'Confidential' `
+    -PurviewJustification 'Reclassified for delivery'
+```
+
 ### Discover and replace variables
 
 ```powershell
@@ -127,7 +140,7 @@ $vars = @{ '<<Presenter>>' = 'Jane Doe'; '<<Company>>' = 'Contoso Ltd.'; '<<Date
 
 ## Purview Information Protection Labeling
 
-When running **Mode 8 (ConvertToPDF)**, the script automatically sets the Microsoft Purview Information Protection label **"Public"** on every exported PDF using `Set-FileLabel` with justification *"Customer Workshop delivery"*.
+When running **Mode 8 (ConvertToPDF)** or **Mode 9 (SetPurviewLabel)**, the script sets the Microsoft Purview Information Protection label **"Public"** on every PDF using `Set-FileLabel` with justification *"Customer Workshop delivery"*. Mode 8 labels PDFs after exporting them from PowerPoint; Mode 9 labels PDFs in any folder without conversion.
 
 ### Requirements
 
@@ -140,7 +153,7 @@ When running **Mode 8 (ConvertToPDF)**, the script automatically sets the Micros
 |----------|-------------|
 | Module installed | Each PDF is labeled **Public** after export. |
 | Module not installed | A warning is displayed with the download link. PDF export still succeeds; only labeling is skipped. |
-| ARM64 architecture | The labeling step is automatically delegated to the x86 PowerShell host (`C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe`) because the Purview module does not support ARM64 natively. **Note:** Labeling on ARM64 may be significantly slower due to x86 emulation. |
+| ARM64 architecture | The labeling step is automatically delegated to the x86 PowerShell host (`C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe`) because the Purview module does not support ARM64 natively. All PDFs are batched into a single x86 process for performance. |
 
 ## Logging
 

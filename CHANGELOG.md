@@ -2,6 +2,17 @@
 
 All notable changes to SlidePrep are documented in this file.
 
+## [1.20260402.2] — 2026-04-02
+
+### Added
+- **Mode 9 (SetPurviewLabel):** New standalone mode to apply a Purview Information Protection sensitivity label to all PDFs in a folder, independent of PDF conversion. Use `-SetPurviewLabel -SourceFolder C:\MyPDFs` to label existing PDFs without re-exporting from PowerPoint. Accepts the same `-PurviewLabelId`, `-PurviewLabelName`, and `-PurviewJustification` parameters as Mode 8.
+
+## [1.20260402.1] — 2026-04-02
+
+### Changed
+- **Mode 8 (ConvertToPDF) — ARM64 performance:** Purview labeling now batches all PDFs into a **single** x86 PowerShell call (via `-EncodedCommand`) instead of spawning one process per file. Module import and process startup happen only once, reducing labeling time from ~O(N × 8s) to ~O(8s + N × 0.5s).
+- Uses `Start-Process` with file-level stdout/stderr redirects so the native MIP SDK stderr output never enters PowerShell's error stream, eliminating both `CliXmlError` (CLIXML deserialization) and `NativeCommandError` exceptions that occurred with 60+ PDFs.
+
 ## [1.20260401.2] — 2026-04-01
 
 ### Changed

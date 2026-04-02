@@ -24,6 +24,8 @@
       Mode 7 - AddLogo           : Insert a customer logo image onto every title slide.
                                    Position and scaling should be verified manually afterwards.
       Mode 8 - ConvertToPDF      : Export every deck to PDF for customer handout.
+      Mode 9 - SetPurviewLabel   : Apply a Purview sensitivity label to all PDFs
+                                   in a folder (no PPTX conversion needed).
 
     The script uses PowerPoint COM Automation and must run on a Windows machine with
     Microsoft PowerPoint installed. All COM objects are released in a finally block to
@@ -87,6 +89,11 @@
 .PARAMETER PurviewJustification
     Justification message passed to Set-FileLabel when changing the label.
     Defaults to 'Customer Workshop delivery'.
+
+.PARAMETER SetPurviewLabel
+    Activates Mode 9. Applies the configured Purview Information Protection label to
+    every PDF in SourceFolder. Use this to label PDFs independently of Mode 8 (ConvertToPDF),
+    for example when the PDFs were produced elsewhere or need re-labeling.
 
 .PARAMETER RemoveFinal
     Activates Mode 4. Removes the "Final" document property from every PPTX in
@@ -206,6 +213,15 @@
     Requires  : Windows with Microsoft PowerPoint installed, PowerShell 5.1+
 
     Version History:
+      1.20260402.2  2026-04-02  Mode 9 (SetPurviewLabel): standalone mode to apply a
+                                 Purview sensitivity label to all PDFs in a folder,
+                                 independent of PDF conversion.
+      1.20260402.1  2026-04-02  Mode 8 ARM64 perf: Purview labeling now batches all PDFs
+                                 into a single x86 PowerShell call via -EncodedCommand
+                                 instead of spawning one process per file. Uses
+                                 Start-Process with file redirects so native MIP SDK
+                                 stderr never enters PowerShell's error stream (avoids
+                                 CLIXML and NativeCommandError on large runs).
       1.20260401.2  2026-04-01  Mode 8: Purview label ID, display name, and justification
                                  are now configurable via -PurviewLabelId, -PurviewLabelName,
                                  and -PurviewJustification parameters (defaults unchanged).
@@ -301,16 +317,23 @@ param (
         HelpMessage = 'Convert all PPTX files to PDF.')]
     [switch]$ConvertToPDF,
 
+    [Parameter(Mandatory, ParameterSetName = 'Mode9SetPurviewLabel',
+        HelpMessage = 'Apply Purview sensitivity label to all PDFs in SourceFolder.')]
+    [switch]$SetPurviewLabel,
+
     [Parameter(ParameterSetName = 'Mode8ConvertToPDF',
         HelpMessage = 'Purview Information Protection label ID to apply to exported PDFs.')]
+    [Parameter(ParameterSetName = 'Mode9SetPurviewLabel')]
     [string]$PurviewLabelId = '87867195-f2b8-4ac2-b0b6-6bb73cb33afc',
 
     [Parameter(ParameterSetName = 'Mode8ConvertToPDF',
         HelpMessage = 'Purview Information Protection label name (for display only).')]
+    [Parameter(ParameterSetName = 'Mode9SetPurviewLabel')]
     [string]$PurviewLabelName = 'Public',
 
     [Parameter(ParameterSetName = 'Mode8ConvertToPDF',
         HelpMessage = 'Justification message for the Purview label change.')]
+    [Parameter(ParameterSetName = 'Mode9SetPurviewLabel')]
     [string]$PurviewJustification = 'Customer Workshop delivery',
 
     # --- Shared path parameters ---
@@ -323,6 +346,7 @@ param (
     [Parameter(Mandatory, ParameterSetName = 'Mode6SetVariables')]
     [Parameter(Mandatory, ParameterSetName = 'Mode7AddLogo')]
     [Parameter(Mandatory, ParameterSetName = 'Mode8ConvertToPDF')]
+    [Parameter(Mandatory, ParameterSetName = 'Mode9SetPurviewLabel')]
     [ValidateScript({ Test-Path $_ -PathType Container })]
     [string]$SourceFolder,
 
@@ -338,7 +362,7 @@ param (
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
-[string]$script:ScriptVersion   = '1.20260401.2'
+[string]$script:ScriptVersion   = '1.20260402.2'
 [string]$script:ScriptName      = $MyInvocation.MyCommand.Name
 [datetime]$script:ScriptStart   = Get-Date
 [string]$script:LogFileName     = '{0}-{1:yyyy-MM-dd-HH-mm}.csv' -f
@@ -736,28 +760,76 @@ function Set-PdfPurviewLabel {
     $isArm64 = $env:PROCESSOR_ARCHITECTURE -eq 'ARM64'
 
     if ($isArm64) {
-        # ARM64: delegate to x86 PowerShell
+        # ARM64: delegate to a single x86 PowerShell process for all PDFs
         $x86Ps = 'C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe'
         if (-not (Test-Path -LiteralPath $x86Ps)) {
             Write-LogAndHost -Message "`t-> x86 PowerShell not found at $x86Ps. Purview labeling skipped." -Status Warning -ForegroundColor Magenta
             return
         }
-        Write-LogAndHost -Message "`t-> ARM64 detected - delegating to x86 PowerShell." -ForegroundColor Yellow
-        Write-LogAndHost -Message "`t-> WARNING: Labeling on ARM64 may be significantly slower due to x86 emulation." -Status Warning -ForegroundColor Magenta
+        Write-LogAndHost -Message "`t-> ARM64 detected - delegating to x86 PowerShell (batched)." -ForegroundColor Yellow
 
-        foreach ($pdf in $pdfFiles) {
-            try {
-                $escapedPath = $pdf.FullName -replace "'", "''"
-                $scriptBlock = "Import-Module PurviewInformationProtection -MinimumVersion 3.2.57.0 -ErrorAction Stop; " +
-                    "Set-FileLabel -Path '$escapedPath' -LabelId '$LabelId' -JustificationMessage '$JustificationMessage' -ErrorAction Stop"
-                $result = & $x86Ps -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command $scriptBlock 2>&1
-                if ($LASTEXITCODE -ne 0) {
-                    throw ($result -join "`n")
-                }
-                Write-LogAndHost -Message ("`t-> Labeled: {0}" -f $pdf.Name) -ForegroundColor Green
+        $escapedDest  = $DestinationPath    -replace "'", "''"
+        $escapedLabel = $LabelId            -replace "'", "''"
+        $escapedJust  = $JustificationMessage -replace "'", "''"
+
+        # Build a script that imports the module once and labels all PDFs.
+        # All status goes to stdout via OK|/FAIL|/IMPORT_FAILED| protocol.
+        $batchScript = @"
+`$ProgressPreference = 'SilentlyContinue'
+`$WarningPreference  = 'SilentlyContinue'
+try {
+    Import-Module PurviewInformationProtection -MinimumVersion 3.2.57.0 -ErrorAction Stop
+} catch {
+    Write-Output ('IMPORT_FAILED|' + `$_.Exception.Message)
+    exit 1
+}
+Get-ChildItem -LiteralPath '$escapedDest' -Filter '*.pdf' -File | ForEach-Object {
+    try {
+        Set-FileLabel -Path `$_.FullName -LabelId '$escapedLabel' -JustificationMessage '$escapedJust' -ErrorAction Stop
+        Write-Output ('OK|' + `$_.Name)
+    } catch {
+        Write-Output ('FAIL|' + `$_.Name + '|' + `$_.Exception.Message)
+    }
+}
+"@
+        $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($batchScript))
+
+        # Use Start-Process with file redirects so native MIP SDK stderr
+        # never enters PowerShell's error stream (avoids CLIXML and
+        # NativeCommandError issues regardless of file count).
+        $outFile = [System.IO.Path]::GetTempFileName()
+        $errFile = [System.IO.Path]::GetTempFileName()
+        try {
+            $proc = Start-Process -FilePath $x86Ps `
+                -ArgumentList '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', $encoded `
+                -Wait -PassThru -NoNewWindow `
+                -RedirectStandardOutput $outFile `
+                -RedirectStandardError  $errFile
+            $result   = @(Get-Content -Path $outFile -ErrorAction SilentlyContinue)
+            $exitCode = $proc.ExitCode
+        }
+        finally {
+            Remove-Item -Path $outFile, $errFile -Force -ErrorAction SilentlyContinue
+        }
+
+        if ($exitCode -ne 0) {
+            $importError = ($result | Where-Object { $_ -match '^IMPORT_FAILED\|' }) -replace '^IMPORT_FAILED\|', ''
+            if ($importError) {
+                Write-LogAndHost -Message ("`t-> Failed to import PurviewInformationProtection: {0}" -f $importError) -Status Error -ForegroundColor Red
             }
-            catch {
-                Write-LogAndHost -Message ("`t-> Failed to label {0}: {1}" -f $pdf.Name, $_.Exception.Message) -Status Error -ForegroundColor Red
+            else {
+                Write-LogAndHost -Message ("`t-> x86 PowerShell failed (exit code {0}): {1}" -f $exitCode, ($result -join "`n")) -Status Error -ForegroundColor Red
+            }
+            return
+        }
+
+        foreach ($line in $result) {
+            $text = "$line"
+            if ($text -match '^OK\|(.+)$') {
+                Write-LogAndHost -Message ("`t-> Labeled: {0}" -f $Matches[1]) -ForegroundColor Green
+            }
+            elseif ($text -match '^FAIL\|([^|]+)\|(.+)$') {
+                Write-LogAndHost -Message ("`t-> Failed to label {0}: {1}" -f $Matches[1], $Matches[2]) -Status Error -ForegroundColor Red
             }
         }
     }
@@ -1522,6 +1594,19 @@ function Start-Main {
                 }
 
                 $logPath = $DestinationFolder
+            }
+        }
+
+        'Mode9SetPurviewLabel' {
+            Write-Host $script:Delimiter -ForegroundColor Yellow
+            Write-LogAndHost -Message 'Mode: Set Purview label on PDFs' -ForegroundColor Yellow
+
+            if (Test-FolderReady -Folder $SourceFolder -IsSource) {
+                if (Test-PurviewAvailability) {
+                    Set-PdfPurviewLabel -DestinationPath $SourceFolder `
+                        -LabelId $PurviewLabelId -LabelName $PurviewLabelName `
+                        -JustificationMessage $PurviewJustification
+                }
             }
         }
 
